@@ -1,2 +1,3 @@
-erox
+EROX: Erlang OpenFlow Controller
 ====
+
