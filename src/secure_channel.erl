@@ -36,7 +36,7 @@ wait_for_socket({socket_ready, Socket}, State) when is_port(Socket) ->
     {next_state, wait_for_hello, State#state{socket=Socket}, get_timeout()};
 wait_for_socket(Other, State) ->
     % error_logger:error_msg("State: wait_for_socket. Unexpected message: ~p~n", [Other]),
-    io:format("State: wait_for_socket, msg: ~p~n", [Other]),
+    lager:info("State: wait_for_socket, msg: ~p~n", [Other]),
     {next_state, wait_for_socket, State}.
 
 
@@ -44,15 +44,15 @@ wait_for_hello({msg, <<Version:8, ?OFPT_HELLO:8, 8:16/big-integer, _RecvXid:32/b
     case supported_version(Version) of
 	true -> send_of_features_request_msg(Socket, Version, Xid);
 	false ->
-	    io:format("State: wait_for_hello, not supported version: ~p~n", [Version]),
+	    lager:error("State: wait_for_hello, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
     end,
     {next_state, wait_for_features_reply, State#state{xid=generate_xid(Xid), ofv=Version}, get_timeout()};
 wait_for_hello(timeout, State) ->
-    io:format("State: wait_for_hello, timeouted!~n"),
+    lager:error("State: wait_for_hello, timeouted!~n"),
     {stop, normal, State};
 wait_for_hello(_Other, State) ->
-    io:format("State: wait_for_hello, msg: ~p~n", [_Other]),
+    lager:info("State: wait_for_hello, msg: ~p~n", [_Other]),
     {next_state, wait_for_hello, State, get_timeout()}.
 
 
@@ -63,7 +63,7 @@ wait_for_features_reply({msg, <<Version:8, ?OFPT_FEATURES_REPLY:8, _Length:16/bi
 	    send_of_msg(Socket, Version, ?OFPT_SET_CONFIG, Xid, <<?OFPC_FRAG_NORMAL:16/big-integer, 16#ffff:16/big-integer>>), 
 	    {next_state, wait_for_of_msg, State#state{dpid=Dpid, xid=generate_xid(Xid)}, get_timeout()};
 	false ->
-	    io:format("State: wait_for_features_reply, not supported version: ~p~n", [Version]),
+	    lager:error("State: wait_for_features_reply, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
     end;
 wait_for_features_reply({msg, <<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>>}, #state{socket=Socket} = State) ->
@@ -72,14 +72,14 @@ wait_for_features_reply({msg, <<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-intege
 	    send_of_echo_reply_msg(Socket, Version, RecvXid),
 	    {next_state, wait_for_features_reply, State, get_timeout()};
 	false ->
-	    io:format("State: wait_for_features_reply, not supported version: ~p~n", [Version]),
+	    lager:error("State: wait_for_features_reply, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
     end;
 wait_for_features_reply(timeout, State) ->
-    io:format("State: wait_for_features_reply, timeouted!~n"),
+    lager:error("State: wait_for_features_reply, timeouted!~n"),
     {stop, normal, State};
 wait_for_features_reply(_Other, State) ->
-    io:format("State: wait_for_features_reply, msg: ~p~n", [_Other]),
+    lager:info("State: wait_for_features_reply, msg: ~p~n", [_Other]),
     {next_state, wait_for_features_reply, State, get_timeout()}.
 
 
@@ -90,7 +90,7 @@ wait_for_of_msg({msg, Binary}, #state{socket=Socket, dpid=Dpid, xid=Xid} = State
 	true ->
 	    true;
 	false ->
-	    io:format("State: wait_for_of_msg, not supported version: ~p~n", [Version]),
+	    lager:error("State: wait_for_of_msg, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
     end,
 
@@ -100,91 +100,91 @@ wait_for_of_msg({msg, Binary}, #state{socket=Socket, dpid=Dpid, xid=Xid} = State
 	    send_of_hello_msg(Socket, Version, Xid),
 	    {next_state, wait_for_of_msg, State#state{xid=generate_xid(Xid)}, get_timeout()};
 	<<_:8, ?OFPT_ERROR:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("ERROR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:error("ERROR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    % TODO continue or exit?
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
 	    send_of_echo_reply_msg(Socket, Version, RecvXid),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_ECHO_REPLY:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
-	    io:format("ECHO REPLY message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
+	    lager:info("ECHO REPLY message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_VENDOR:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    % TODO how to handle VENDOR msg?
-	    io:format("VENDOR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("VENDOR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_FEATURES_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("FEATURES REQUEST message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
+	    lager:info("FEATURES REQUEST message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_FEATURES_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, RecvDpid:64/bits, Nbuffers:32/big-integer, Ntables:8/integer, _Pad:24/bits, Capabilities:32/bits, Actions:32/bits, PhyPorts/binary>> ->
 	    if
-		Dpid /= RecvDpid -> io:format("Payloadpath ID not match: original=~p, received=~p~n", [Dpid, RecvDpid]);
+		Dpid /= RecvDpid -> lager:info("Payloadpath ID not match: original=~p, received=~p~n", [Dpid, RecvDpid]);
 		true -> false
 	    end,
-	    io:format("FEATURES REPLY message(xid=~w) from switch(~p): length=~w, n_buffers=~w, n_tables=~w, capabilities=~w, actions=~w~n", [RecvXid, Dpid, Length, Nbuffers, Ntables, Capabilities, Actions]),
+	    lager:info("FEATURES REPLY message(xid=~w) from switch(~p): length=~w, n_buffers=~w, n_tables=~w, capabilities=~w, actions=~w~n", [RecvXid, Dpid, Length, Nbuffers, Ntables, Capabilities, Actions]),
 	    print_phyports(PhyPorts),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_GET_CONFIG_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("GET CONFIG REQUEST message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
+	    lager:info("GET CONFIG REQUEST message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_GET_CONFIG_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("GET CONFIG REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("GET CONFIG REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_SET_CONFIG:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("SET CONFIG message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("SET CONFIG message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_PACKET_IN:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("PACKET IN message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("PACKET IN message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_FLOW_REMOVED:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("FLOW REMOVED message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("FLOW REMOVED message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_PORT_STATUS:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("PORT STATUS message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("PORT STATUS message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_PACKET_OUT:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("PACKET OUT message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("PACKET OUT message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_FLOW_MOD:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("FLOW MOD message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("FLOW MOD message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_PORT_MOD:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("PORT MOD message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("PORT MOD message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_STATS_REQUEST:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("STATS REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("STATS REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_STATS_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("STATS REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("STATS REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_BARRIER_REQUEST:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("BARRIER REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("BARRIER REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_BARRIER_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("BARRIER REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("BARRIER REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_QUEUE_GET_CONFIG_REQUEST:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
-	    io:format("QUEUE GET CONFIG REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("QUEUE GET CONFIG REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_QUEUE_GET_CONFIG_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    io:format("QUEUE GET CONFIG REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
+	    lager:info("QUEUE GET CONFIG REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	_Msg ->
-	    io:format("State:wait_for_of_msg, Unknown Msg:~p~n", [_Msg]),
+	    lager:warning("State:wait_for_of_msg, Unknown Msg:~p~n", [_Msg]),
 	    {next_state, wait_for_of_msg, State, get_timeout()}
     end;
 wait_for_of_msg(timeout, State) ->
-    io:format("State: wait_for_of_msg, timeouted!~n"),
+    lager:error("State: wait_for_of_msg, timeouted!~n"),
     {stop, normal, State};
 wait_for_of_msg(_Other, State) ->
-    io:format("State:wait_for_of_msg, Unknown Event:~p~n", [_Other]),
+    lager:warning("State:wait_for_of_msg, Unknown Event:~p~n", [_Other]),
     {next_state, wait_for_of_msg, State, get_timeout()}.
 
 

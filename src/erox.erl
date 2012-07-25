@@ -9,27 +9,25 @@
 -record(state, {listener, acceptor, module}).
 
 start_link([ListenPort]) ->
-    io:format("erox starting...~n"),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [ListenPort], []).
 
 init([ListenPort]) ->
-    io:format("in erox init: listen_port=~p~n", [ListenPort]),
+    lager:info("erox initializing: listen_port=~p~n", [ListenPort]),
     process_flag(trap_exit, true),
     case gen_tcp:listen(ListenPort, [binary, {packet, 0}, {reuseaddr, true}, {active, false}, {keepalive, true}, {backlog, 10}]) of
 	{ok, ListenSocket} ->
 	    case prim_inet:async_accept(ListenSocket, -1) of
 		{ok, Ref} ->
-		    io:format("async_accept~n"),
 		    {ok, #state{listener = ListenSocket, acceptor = Ref, module = secure_channel}};
 		{error, Reason} ->
-		    io:format("listen failed: ~p~n", [Reason]),
+		    lager:error("listen failed: ~p~n", [Reason]),
 		    {stop, Reason}
 	    end;
 	{error, Reason} ->
-	    io:format("listen failed: ~p~n", [Reason]),
+	    lager:error("listen failed: ~p~n", [Reason]),
 	    {stop, Reason};
 	_ ->
-	    io:format("what's going on?~n")
+	    lager:error("what's going on?~n")
     end.
 
 terminate(_Reason, State) ->

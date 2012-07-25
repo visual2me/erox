@@ -9,7 +9,6 @@
 -define(MAX_TIME, 60).
 
 init(_Args) ->
-    io:format("sc_sup starting...~n"),
     {ok,
 	{
 	    {simple_one_for_one, ?MAX_RESTART, ?MAX_TIME},

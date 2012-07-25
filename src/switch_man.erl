@@ -9,7 +9,6 @@
 
 
 start_link() ->
-    io:format("switch_man starting...~n"),
     % register(?MODULE, spawn_link(?MODULE, init, [])).
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -51,5 +50,5 @@ handle_call(_Msg, _From, SwitchList) ->
     {reply, unkown, SwitchList}.
 
 handle_info(Msg, State) ->
-    io:format("Unknown Msg for switch_man: ~p~n", [Msg]),
+    lager:warning("Unknown Msg for switch_man: ~p~n", [Msg]),
     {noreply, State}.
