@@ -17,8 +17,12 @@ $ make compile
 $ make rel
 ```
 ### Using erox
-* ./rel/erox/bin/erox [start | console]
-* connect Open vSwitch to erox controller
+* start erox in background or with console
+
+  ```sh
+  ./rel/erox/bin/erox [start|console]
+  ```
+* connect Open vSwitch to erox controller (default port is 6633)
 
   ```sh
   $ ovs-vsctl set-controller br0 tcp:[erox_ip_address]
