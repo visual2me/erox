@@ -4,4 +4,7 @@
    {modules, [erox_app, erox_sup, erox, switch_man, sc_sup, secure_channel]},
    {registered, [erox_sup, erox, switch_man, sc_sup]},
    {applications, [kernel, stdlib]},
-   {mod, {erox_app, []}}]}.
+   {mod, {erox_app, []}},
+   {env, [{ports, [6633]},
+          {timeout, [60000]}]}
+   ]}.

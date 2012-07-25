@@ -2,13 +2,22 @@
 -behavior(application).
 -export([start/2, stop/1]).
 -vsn(1.0).
--author("Tony Wan - lintao.wan@emc.com").
+-author("Tony Wan - visual2me@gmail.com").
 -date("2012/06/19 17:33:47").
 
 -define(DEF_PORT, 6633).
 
 start(_Type, _StartArgs) ->
-    erox_sup:start_link(get_app_env(listen_port, ?DEF_PORT)).
+    case application:get_env(erox, listen_port) of
+	{ok, [Port|_]} ->
+	    if
+		Port > 0 -> true;
+		true -> Port = ?DEF_PORT
+	    end;
+	_ -> 
+	    Port = ?DEF_PORT
+    end,
+    erox_sup:start_link(get_app_env(listen_port, Port)).
 
 stop(_State) ->
     ok.

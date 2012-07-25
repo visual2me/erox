@@ -4,7 +4,7 @@
 -export([init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
 -export([stop/0, add/1, del/1, show/0, count/0]).
 -vsn(1.0).
--author("Tony Wan - lintao.wan@emc.com").
+-author("Tony Wan - visual2me@gmail.com").
 -date("2012/06/19 23:10:31").
 
 

@@ -3,7 +3,7 @@
 -export([start_link/1]).
 -export([init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
 -vsn(1.0).
--author("Tony Wan - lintao.wan@emc.com").
+-author("Tony Wan - visual2me@gmail.com").
 -date("2012/06/12 13:52:02").
 
 -record(state, {listener, acceptor, module}).

@@ -2,7 +2,7 @@
 -behavior(supervisor).
 -export([init/1, start_sc/0]).
 -vsn(1.0).
--author("Tony Wan - lintao.wan@emc.com").
+-author("Tony Wan - visual2me@gmail.com").
 -date("2012/06/21 13:47:30").
  
 -define(MAX_RESTART, 3).
