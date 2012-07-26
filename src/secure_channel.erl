@@ -59,7 +59,7 @@ wait_for_hello(_Other, State) ->
 wait_for_features_reply({msg, <<Version:8, ?OFPT_FEATURES_REPLY:8, _Length:16/big-integer, _RecvXid:32/big-integer, Dpid:64/bits, _Nbuffers:32/big-integer, _Ntables:8/integer, _Pad:24/bits, _Capabilities:32/bits, _Actions:32/bits, _PhyPorts/binary>>}, #state{socket=Socket, xid=Xid} = State) ->
     case supported_version(Version) of
 	true ->
-	    switch_man:add(Dpid),
+	    switch_man:add(Dpid, {self()}),
 	    send_of_msg(Socket, Version, ?OFPT_SET_CONFIG, Xid, <<?OFPC_FRAG_NORMAL:16/big-integer, 16#ffff:16/big-integer>>), 
 	    {next_state, wait_for_of_msg, State#state{dpid=Dpid, xid=generate_xid(Xid)}, get_timeout()};
 	false ->
