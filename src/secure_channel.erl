@@ -42,12 +42,13 @@ wait_for_socket(Other, State) ->
 
 wait_for_hello({msg, <<Version:8, ?OFPT_HELLO:8, 8:16/big-integer, _RecvXid:32/big-integer>>}, #state{socket=Socket, xid=Xid} = State) ->
     case supported_version(Version) of
-	true -> send_of_features_request_msg(Socket, Version, Xid);
+	true ->
+	    send_of_features_request_msg(Socket, Version, Xid),
+	    {next_state, wait_for_features_reply, State#state{xid=generate_xid(Xid), ofv=Version}, get_timeout()};
 	false ->
 	    lager:error("State: wait_for_hello, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
-    end,
-    {next_state, wait_for_features_reply, State#state{xid=generate_xid(Xid), ofv=Version}, get_timeout()};
+    end;
 wait_for_hello(timeout, State) ->
     lager:error("State: wait_for_hello, timeouted!~n"),
     {stop, normal, State};
@@ -84,18 +85,50 @@ wait_for_features_reply(_Other, State) ->
 
 
 
-wait_for_of_msg({msg, Binary}, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
+wait_for_of_msg({msg, Binary}, State) ->
     <<Version:8/unsigned, _/binary>> = Binary,
     case supported_version(Version) of
 	true ->
-	    true;
+	    handle_of_msg(Binary, State);
 	false ->
 	    lager:error("State: wait_for_of_msg, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
-    end,
+    end;
+wait_for_of_msg({cmd, Cmd}, State) ->
+    case handle_cmd(Cmd, State) of
+	{ok, NewState} -> {next_state, wait_for_of_msg, NewState, get_timeout()};
+	{error, Reason} ->
+	    lager:error("State: wait_for_of_msg, handle_cmd error: ~p!~n", [Reason]),
+	    {next_state, wait_for_of_msg, State, get_timeout()};
+	{exit, Reason} ->
+	    lager:error("State: wait_for_of_msg, handle_cmd error, exits with reason: ~p!~n", [Reason]),
+	    {stop, normal, State}
+    end;
+wait_for_of_msg(timeout, State) ->
+    lager:error("State: wait_for_of_msg, timeouted!~n"),
+    {stop, normal, State};
+wait_for_of_msg(_Other, State) ->
+    lager:warning("State:wait_for_of_msg, Unknown Event:~p~n", [_Other]),
+    {next_state, wait_for_of_msg, State, get_timeout()}.
 
-    case Binary of
-	<<_:8, ?OFPT_HELLO:8, 8:16/big-integer, _RecvXid:32/big-integer>> ->
+
+handle_event(Event, StateName, StateData) ->
+    {stop, {StateName, undefined_event, Event}, StateData}.
+
+handle_sync_event(Event, _From, StateName, StateData) ->
+    {stop, {StateName, undefined_event, Event}, StateData}.
+
+handle_info({tcp, Socket, Bin}, StateName, #state{socket=Socket} = StateData) ->
+    inet:setopts(Socket, [{active, once}]),
+    ?MODULE:StateName({msg, Bin}, StateData);
+handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket} = StateData) ->
+    {stop, normal, StateData};
+handle_info(_Info, StateName, StateData) ->
+    {noreply, StateName, StateData}.
+
+handle_of_msg(Msg, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
+    case Msg of
+	<<Version:8, ?OFPT_HELLO:8, 8:16/big-integer, _RecvXid:32/big-integer>> ->
 	    % Why HELLO msg now?
 	    send_of_hello_msg(Socket, Version, Xid),
 	    {next_state, wait_for_of_msg, State#state{xid=generate_xid(Xid)}, get_timeout()};
@@ -103,7 +136,7 @@ wait_for_of_msg({msg, Binary}, #state{socket=Socket, dpid=Dpid, xid=Xid} = State
 	    lager:error("ERROR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    % TODO continue or exit?
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
+	<<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
 	    send_of_echo_reply_msg(Socket, Version, RecvXid),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	<<_:8, ?OFPT_ECHO_REPLY:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
@@ -179,28 +212,10 @@ wait_for_of_msg({msg, Binary}, #state{socket=Socket, dpid=Dpid, xid=Xid} = State
 	_Msg ->
 	    lager:warning("State:wait_for_of_msg, Unknown Msg:~p~n", [_Msg]),
 	    {next_state, wait_for_of_msg, State, get_timeout()}
-    end;
-wait_for_of_msg(timeout, State) ->
-    lager:error("State: wait_for_of_msg, timeouted!~n"),
-    {stop, normal, State};
-wait_for_of_msg(_Other, State) ->
-    lager:warning("State:wait_for_of_msg, Unknown Event:~p~n", [_Other]),
-    {next_state, wait_for_of_msg, State, get_timeout()}.
+    end.
 
-
-handle_event(Event, StateName, StateData) ->
-    {stop, {StateName, undefined_event, Event}, StateData}.
-
-handle_sync_event(Event, _From, StateName, StateData) ->
-    {stop, {StateName, undefined_event, Event}, StateData}.
-
-handle_info({tcp, Socket, Bin}, StateName, #state{socket=Socket} = StateData) ->
-    inet:setopts(Socket, [{active, once}]),
-    ?MODULE:StateName({msg, Bin}, StateData);
-handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket} = StateData) ->
-    {stop, normal, StateData};
-handle_info(_Info, StateName, StateData) ->
-    {noreply, StateName, StateData}.
+handle_cmd(_Cmd, State) ->
+    {ok, State}.
 
 
 generate_xid(Xid) when Xid < 16#ffffffff, Xid >= 0 ->
