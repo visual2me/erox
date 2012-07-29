@@ -3,6 +3,7 @@
 -export([start_link/0]).
 -export([init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
 -export([stop/0, add/2, del/1, show/0, count/0]).
+-export([mod_flow/2]).
 -vsn(1.0).
 -author("Tony Wan - visual2me@gmail.com").
 -date("2012/06/19 23:10:31").
@@ -13,7 +14,7 @@ start_link() ->
 
 init(_Args) ->
     process_flag(trap_exit, true),
-    ets:new(switches, [set,private,named_table]),
+    ets:new(switches, [set,public,named_table]),
     {ok, []}.
 
 terminate(_Reason, _LoopData) ->
@@ -37,6 +38,15 @@ count() ->
 
 show() ->
     gen_server:call(?MODULE, {show}).
+
+mod_flow(Dpid, FlowSpec) ->
+    case ets:lookup(switches, Dpid) of
+	[{Dpid, {Pid}}] ->
+	    gen_fsm:send_event(Pid, {cmd, FlowSpec}),
+	    {ok, cmd_sent};
+	[] ->
+	    {error, not_exist}
+    end.
 
 handle_call({add, Switch}, _From, State) ->
     ets:insert(switches, Switch),

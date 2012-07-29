@@ -169,9 +169,8 @@ handle_of_msg(Msg, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("SET CONFIG message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_PACKET_IN:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
-	    lager:info("PACKET IN message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
-	    {next_state, wait_for_of_msg, State, get_timeout()};
+	<<_:8, ?OFPT_PACKET_IN:8, _>> ->
+	    handle_packet_in(Msg, State);
 	<<_:8, ?OFPT_FLOW_REMOVED:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
 	    lager:info("FLOW REMOVED message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
@@ -214,7 +213,65 @@ handle_of_msg(Msg, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
 	    {next_state, wait_for_of_msg, State, get_timeout()}
     end.
 
-handle_cmd(_Cmd, State) ->
+handle_packet_in(<<_:8, ?OFPT_PACKET_IN:8, Length:16/big-unsigned, RecvXid:32/big-unsigned, BuffId:32/big-unsigned, PacketLen:16/big-unsigned, InPort:16/big-unsigned, Reason:8, _:8, Frame/binary>>, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
+    lager:info("PACKET IN message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Frame]),
+    case Frame of
+	<<SrcMAC:6/binary, DstMAC:6/binary, 16#81, 16#00, Priority:3/unsigned, DE:1/bits, Vid:12/unsigned, Type:2/binary, Packet/binary>> -> % 802.1Q header
+	    lager:info("802.1Q header", []);
+	<<SrcMAC:6/binary, DstMAC:6/big-unsigned, Type:2/binary, Packet/binary>> ->
+	    case Type of
+		16#0800 -> % IPv4
+		    case Packet of
+			<<Version:4/integer, HeadLen:4/integer, ToS:8/bits, Length:16/big-unsigned, Id:16/big-integer, Flag:3/bits, FragOffset:13/integer, TTL:8/integer, Protocol:8/integer, Chksum:16/integer, SrcIP:4/binary, DstIP:4/binary, Data/binary>> ->
+			    lager:info("IPv4 packet: ~p -> ~p", [SrcIP, DstIP]);
+			_ ->
+			    lager:info("Invalid IPv4 packet.")
+		    end;
+		16#86DD -> % IPv6
+		    lager:info("IPv6 packet", []);
+		16#0806 -> % ARP
+		    case Packet of
+			<<HardwareType:16/big-unsigned, ProtocolType:16/big-unsigned, HardwareAddrLen:8/integer, ProtocolAddrLen:8/integer, Operation:16/big-unsigned, SenderMAC:6/binary, SenderIP:4/binary, TargetMAC:6/binary, TargetIP:4/binary>> ->
+			    case Operation of
+				1 ->
+				    lager:info("ARP request: ~p(~p) asks who has ~p", [SenderIP, SenderMAC, TargetIP]);
+				2 ->
+				    lager:info("ARP reply: Hi ~p(~p), ~p has ~p", [SenderIP, SenderMAC, TargetMAC, TargetIP]);
+				_->
+				    lager:error("Invalid ARP packet")
+			    end;
+
+			_ ->
+			    lager:error("Invalid ARP packet.")
+		    end;
+		16#0835 -> % RARP
+		    case Packet of
+			<<HardwareType:16/big-unsigned, ProtocolType:16/big-unsigned, HardwareAddrLen:8/integer, ProtocolAddrLen:8/integer, Operation:16/big-unsigned, SenderMAC:6/binary, SenderIP:4/binary, TargetMAC:6/binary, TargetIP:4/binary>> ->
+			    case Operation of
+				3 ->
+				    lager:info("ARP request: ~p(~p) asks who has ~p", [SenderIP, SenderMAC, TargetMAC]);
+				4 ->
+				    lager:info("ARP reply: Hi ~p(~p), ~p has ~p", [SenderIP, SenderMAC, TargetIP, TargetMAC]);
+				_->
+				    lager:error("Invalid ARP packet")
+			    end;
+
+			_ ->
+			    lager:error("Invalid ARP packet.")
+		    end;
+		_ -> % DONOT CARE
+		    lager:info("Packets not covered yet", [])
+	    end;
+	_ ->
+	    lager:info("PACKET_IN: Non Ethernet frame --> ~p", [Frame])
+    end,
+    {next_state, wait_for_of_msg, State, get_timeout()};
+handle_packet_in(Msg, State) ->
+    lager:warning("PACKET_IN: Unknown packet --> ~p", [Msg]),
+    {next_state, wait_for_of_msg, State, get_timeout()}.
+
+handle_cmd(Cmd, State) ->
+    lager:info("Switch ~p received cmd ~p", [State#state.dpid, Cmd]),
     {ok, State}.
 
 
