@@ -40,7 +40,7 @@ wait_for_socket(Other, State) ->
     {next_state, wait_for_socket, State}.
 
 
-wait_for_hello({msg, <<Version:8, ?OFPT_HELLO:8, 8:16/big-integer, _RecvXid:32/big-integer>>}, #state{socket=Socket, xid=Xid} = State) ->
+wait_for_hello({msg, <<Version:8, ?OFPT_HELLO:8, 8:16, _RecvXid:32>>}, #state{socket=Socket, xid=Xid} = State) ->
     case supported_version(Version) of
 	true ->
 	    send_of_features_request_msg(Socket, Version, Xid),
@@ -57,17 +57,17 @@ wait_for_hello(_Other, State) ->
     {next_state, wait_for_hello, State, get_timeout()}.
 
 
-wait_for_features_reply({msg, <<Version:8, ?OFPT_FEATURES_REPLY:8, _Length:16/big-integer, _RecvXid:32/big-integer, Dpid:64/bits, _Nbuffers:32/big-integer, _Ntables:8/integer, _Pad:24/bits, _Capabilities:32/bits, _Actions:32/bits, _PhyPorts/binary>>}, #state{socket=Socket, xid=Xid} = State) ->
+wait_for_features_reply({msg, <<Version:8, ?OFPT_FEATURES_REPLY:8, _Length:16, _RecvXid:32, Dpid:64/bits, _Nbuffers:32, _Ntables:8, _Pad:24/bits, _Capabilities:32/bits, _Actions:32/bits, _PhyPorts/binary>>}, #state{socket=Socket, xid=Xid} = State) ->
     case supported_version(Version) of
 	true ->
 	    switch_man:add(Dpid, {self()}),
-	    send_of_msg(Socket, Version, ?OFPT_SET_CONFIG, Xid, <<?OFPC_FRAG_NORMAL:16/big-integer, 16#ffff:16/big-integer>>), 
+	    send_of_msg(Socket, Version, ?OFPT_SET_CONFIG, Xid, <<?OFPC_FRAG_NORMAL:16, 16#ffff:16>>), 
 	    {next_state, wait_for_of_msg, State#state{dpid=Dpid, xid=generate_xid(Xid)}, get_timeout()};
 	false ->
 	    lager:error("State: wait_for_features_reply, not supported version: ~p~n", [Version]),
 	    {stop, normal, State}
     end;
-wait_for_features_reply({msg, <<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>>}, #state{socket=Socket} = State) ->
+wait_for_features_reply({msg, <<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16, RecvXid:32>>}, #state{socket=Socket} = State) ->
     case supported_version(Version) of
 	true ->
 	    send_of_echo_reply_msg(Socket, Version, RecvXid),
@@ -86,7 +86,7 @@ wait_for_features_reply(_Other, State) ->
 
 
 wait_for_of_msg({msg, Binary}, State) ->
-    <<Version:8/unsigned, _/binary>> = Binary,
+    <<Version:8, _/binary>> = Binary,
     case supported_version(Version) of
 	true ->
 	    handle_of_msg(Binary, State);
@@ -128,29 +128,29 @@ handle_info(_Info, StateName, StateData) ->
 
 handle_of_msg(Msg, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
     case Msg of
-	<<Version:8, ?OFPT_HELLO:8, 8:16/big-integer, _RecvXid:32/big-integer>> ->
+	<<Version:8, ?OFPT_HELLO:8, 8:16, _RecvXid:32>> ->
 	    % Why HELLO msg now?
 	    send_of_hello_msg(Socket, Version, Xid),
 	    {next_state, wait_for_of_msg, State#state{xid=generate_xid(Xid)}, get_timeout()};
-	<<_:8, ?OFPT_ERROR:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_ERROR:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:error("ERROR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    % TODO continue or exit?
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
+	<<Version:8, ?OFPT_ECHO_REQUEST:8, 8:16, RecvXid:32>> ->
 	    send_of_echo_reply_msg(Socket, Version, RecvXid),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_ECHO_REPLY:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
+	<<_:8, ?OFPT_ECHO_REPLY:8, 8:16, RecvXid:32>> ->
 	    lager:info("ECHO REPLY message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_VENDOR:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_VENDOR:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    % TODO how to handle VENDOR msg?
 	    lager:info("VENDOR message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_FEATURES_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
+	<<_:8, ?OFPT_FEATURES_REQUEST:8, 8:16, RecvXid:32>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("FEATURES REQUEST message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_FEATURES_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, RecvDpid:64/bits, Nbuffers:32/big-integer, Ntables:8/integer, _Pad:24/bits, Capabilities:32/bits, Actions:32/bits, PhyPorts/binary>> ->
+	<<_:8, ?OFPT_FEATURES_REPLY:8, Length:16, RecvXid:32, RecvDpid:64/bits, Nbuffers:32, Ntables:8, _Pad:24/bits, Capabilities:32/bits, Actions:32/bits, PhyPorts/binary>> ->
 	    if
 		Dpid /= RecvDpid -> lager:info("Payloadpath ID not match: original=~p, received=~p~n", [Dpid, RecvDpid]);
 		true -> false
@@ -158,54 +158,54 @@ handle_of_msg(Msg, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
 	    lager:info("FEATURES REPLY message(xid=~w) from switch(~p): length=~w, n_buffers=~w, n_tables=~w, capabilities=~w, actions=~w~n", [RecvXid, Dpid, Length, Nbuffers, Ntables, Capabilities, Actions]),
 	    print_phyports(PhyPorts),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_GET_CONFIG_REQUEST:8, 8:16/big-integer, RecvXid:32/big-integer>> ->
+	<<_:8, ?OFPT_GET_CONFIG_REQUEST:8, 8:16, RecvXid:32>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("GET CONFIG REQUEST message(xid=~p) from switch(~p)~n", [RecvXid, Dpid]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_GET_CONFIG_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_GET_CONFIG_REPLY:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("GET CONFIG REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_SET_CONFIG:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_SET_CONFIG:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("SET CONFIG message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_PACKET_IN:8, _>> ->
+	<<_:8, ?OFPT_PACKET_IN:8, _/binary>> ->
 	    handle_packet_in(Msg, State);
-	<<_:8, ?OFPT_FLOW_REMOVED:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_FLOW_REMOVED:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("FLOW REMOVED message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_PORT_STATUS:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_PORT_STATUS:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("PORT STATUS message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_PACKET_OUT:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_PACKET_OUT:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("PACKET OUT message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_FLOW_MOD:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_FLOW_MOD:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("FLOW MOD message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_PORT_MOD:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_PORT_MOD:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("PORT MOD message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_STATS_REQUEST:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_STATS_REQUEST:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("STATS REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_STATS_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_STATS_REPLY:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("STATS REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_BARRIER_REQUEST:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_BARRIER_REQUEST:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("BARRIER REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_BARRIER_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_BARRIER_REPLY:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("BARRIER REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_QUEUE_GET_CONFIG_REQUEST:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_QUEUE_GET_CONFIG_REQUEST:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    % A controller-to-switch meg, so should not be received by the controller.
 	    lager:info("QUEUE GET CONFIG REQUEST message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
-	<<_:8, ?OFPT_QUEUE_GET_CONFIG_REPLY:8, Length:16/big-integer, RecvXid:32/big-integer, Payload/binary>> ->
+	<<_:8, ?OFPT_QUEUE_GET_CONFIG_REPLY:8, Length:16, RecvXid:32, Payload/binary>> ->
 	    lager:info("QUEUE GET CONFIG REPLY message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Payload]),
 	    {next_state, wait_for_of_msg, State, get_timeout()};
 	_Msg ->
@@ -213,45 +213,47 @@ handle_of_msg(Msg, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
 	    {next_state, wait_for_of_msg, State, get_timeout()}
     end.
 
-handle_packet_in(<<_:8, ?OFPT_PACKET_IN:8, Length:16/big-unsigned, RecvXid:32/big-unsigned, BuffId:32/big-unsigned, PacketLen:16/big-unsigned, InPort:16/big-unsigned, Reason:8, _:8, Frame/binary>>, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
-    lager:info("PACKET IN message(xid=~p) from switch(~p): length=~p, payload=~p~n", [RecvXid, Dpid, Length, Frame]),
+handle_packet_in(<<_:8, ?OFPT_PACKET_IN:8, Length:16, RecvXid:32, BuffId:32, PacketLen:16, InPort:16, Reason:8, _:8, Frame/binary>>, #state{socket=Socket, dpid=Dpid, xid=Xid} = State) ->
+    lager:info("PACKET IN message(xid=0x~8.16.0B) from Port#0x~4.16.0B@Switch~p: length=~p", [RecvXid, InPort, Dpid, Length]),
     case Frame of
-	<<SrcMAC:6/binary, DstMAC:6/binary, 16#81, 16#00, Priority:3/unsigned, DE:1/bits, Vid:12/unsigned, Type:2/binary, Packet/binary>> -> % 802.1Q header
+	<<DstMAC:6/binary, SrcMAC:6/binary, 16#81, 16#00, Priority:3, DE:1, Vid:12, Type:16, Packet/binary>> -> % 802.1Q header
 	    lager:info("802.1Q header", []);
-	<<SrcMAC:6/binary, DstMAC:6/big-unsigned, Type:2/binary, Packet/binary>> ->
-	    case Type of
-		16#0800 -> % IPv4
+	<<DstMAC:6/binary, SrcMAC:6/binary, Type:16, Packet/binary>> ->
+	    case net_tools:ether_type(Type) of
+		'IPv4' ->
 		    case Packet of
-			<<Version:4/integer, HeadLen:4/integer, ToS:8/bits, Length:16/big-unsigned, Id:16/big-integer, Flag:3/bits, FragOffset:13/integer, TTL:8/integer, Protocol:8/integer, Chksum:16/integer, SrcIP:4/binary, DstIP:4/binary, Data/binary>> ->
-			    lager:info("IPv4 packet: ~p -> ~p", [SrcIP, DstIP]);
+			<<4:4, HeadLen:4, ToS:8, TotalLen:16, Id:16, Flag:3, FragOffset:13, TTL:8, Protocol:8, Chksum:16, SrcIP:4/binary, DstIP:4/binary, IPRest/binary>> ->
+			    OptLen = (HeadLen - 5) * 4,
+			    <<Options:OptLen/binary, DataGram/binary>> = IPRest,
+			    lager:info("IPv4 packet(~s): ~s -> ~s", [net_tools:ip_protocol(Protocol), net_tools:binary_to_ipv4str(SrcIP), net_tools:binary_to_ipv4str(DstIP)]);
 			_ ->
-			    lager:info("Invalid IPv4 packet.")
+			    lager:info("Invalid IPv4 packet: packet=~p", [Packet])
 		    end;
-		16#86DD -> % IPv6
+		'IPv6' ->
 		    lager:info("IPv6 packet", []);
-		16#0806 -> % ARP
+		'ARP' ->
 		    case Packet of
-			<<HardwareType:16/big-unsigned, ProtocolType:16/big-unsigned, HardwareAddrLen:8/integer, ProtocolAddrLen:8/integer, Operation:16/big-unsigned, SenderMAC:6/binary, SenderIP:4/binary, TargetMAC:6/binary, TargetIP:4/binary>> ->
-			    case Operation of
-				1 ->
-				    lager:info("ARP request: ~p(~p) asks who has ~p", [SenderIP, SenderMAC, TargetIP]);
-				2 ->
-				    lager:info("ARP reply: Hi ~p(~p), ~p has ~p", [SenderIP, SenderMAC, TargetMAC, TargetIP]);
-				_->
-				    lager:error("Invalid ARP packet")
+			<<HardwareType:16, ProtocolType:16, HardwareAddrLen:8, ProtocolAddrLen:8, Operation:16, SenderMAC:6/binary, SenderIP:4/binary, TargetMAC:6/binary, TargetIP:4/binary>> ->
+			    case net_tools:arp_operation(Operation) of
+				arp_request ->
+				    lager:info("ARP request: Host(~s/~s) asks who has ~s", [net_tools:binary_to_ipv4str(SenderIP), net_tools:binary_to_macstr(SenderMAC), net_tools:binary_to_ipv4str(TargetIP)]);
+				arp_reply ->
+				    lager:info("ARP reply: Hi host(~s/~s), ~s has ~s", [net_tools:binary_to_ipv4str(SenderIP), net_tools:binary_to_macstr(SenderMAC), net_tools:binary_to_macstr(TargetMAC), net_tools:binary_to_ipv4str(TargetIP)]);
+				unknown ->
+				    lager:error("Invalid ARP packet: operation=~p.", [Operation])
 			    end;
 
 			_ ->
 			    lager:error("Invalid ARP packet.")
 		    end;
-		16#0835 -> % RARP
+		'RARP' ->
 		    case Packet of
-			<<HardwareType:16/big-unsigned, ProtocolType:16/big-unsigned, HardwareAddrLen:8/integer, ProtocolAddrLen:8/integer, Operation:16/big-unsigned, SenderMAC:6/binary, SenderIP:4/binary, TargetMAC:6/binary, TargetIP:4/binary>> ->
+			<<HardwareType:16, ProtocolType:16, HardwareAddrLen:8, ProtocolAddrLen:8, Operation:16, SenderMAC:6/binary, SenderIP:4/binary, TargetMAC:6/binary, TargetIP:4/binary>> ->
 			    case Operation of
 				3 ->
-				    lager:info("ARP request: ~p(~p) asks who has ~p", [SenderIP, SenderMAC, TargetMAC]);
+				    lager:info("ARP request: Host(~s/~s) asks who has ~s", [net_tools:binary_to_ipv4str(SenderIP), net_tools:binary_to_macstr(SenderMAC), net_tools:binary_to_macstr(TargetMAC)]);
 				4 ->
-				    lager:info("ARP reply: Hi ~p(~p), ~p has ~p", [SenderIP, SenderMAC, TargetIP, TargetMAC]);
+				    lager:info("ARP reply: Hi host(~s/~s), ~s has ~s", [net_tools:binary_to_ipv4str(SenderIP), net_tools:binary_to_macstr(SenderMAC), net_tools:binary_to_ipv4str(TargetIP), net_tools:binary_to_macstr(TargetMAC)]);
 				_->
 				    lager:error("Invalid ARP packet")
 			    end;
@@ -259,8 +261,8 @@ handle_packet_in(<<_:8, ?OFPT_PACKET_IN:8, Length:16/big-unsigned, RecvXid:32/bi
 			_ ->
 			    lager:error("Invalid ARP packet.")
 		    end;
-		_ -> % DONOT CARE
-		    lager:info("Packets not covered yet", [])
+		other -> % DONOT CARE
+		    lager:info("Packets not covered yet: eth-type=~p", [Type])
 	    end;
 	_ ->
 	    lager:info("PACKET_IN: Non Ethernet frame --> ~p", [Frame])
@@ -282,7 +284,7 @@ generate_xid(_Xid) ->
 
 send_of_msg(Socket, Version, Type, Xid, Payload) ->
     Length = 8 + byte_size(Payload),
-    gen_tcp:send(Socket, <<Version:8, Type:8, Length:16/big-integer, Xid:32/big-integer, Payload/binary>>).
+    gen_tcp:send(Socket, <<Version:8, Type:8, Length:16, Xid:32, Payload/binary>>).
 
 send_of_hello_msg(Socket, Version, Xid) ->
     send_of_msg(Socket, Version, ?OFPT_HELLO, Xid, <<>>).

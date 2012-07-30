@@ -14,7 +14,7 @@ start_link() ->
 
 init(_Args) ->
     process_flag(trap_exit, true),
-    ets:new(switches, [set,public,named_table]),
+    ets:new(switches, [set,private,named_table]),
     {ok, []}.
 
 terminate(_Reason, _LoopData) ->
