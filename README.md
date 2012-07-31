@@ -20,7 +20,7 @@ $ make rel
 * start erox in background or with console
 
   ```sh
-  ./rel/erox/bin/erox [start|console]
+  $ ./rel/erox/bin/erox [start|console]
   ```
 * connect Open vSwitch to erox controller (default port is 6633)
 

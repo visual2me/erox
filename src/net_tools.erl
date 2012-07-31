@@ -1,7 +1,7 @@
 -module(net_tools).
 -export([ether_type/1, ip_protocol/1, arp_operation/1, icmp_msg/2, tcp_port/1, udp_port/1, binary_to_ipv4str/1, binary_to_macstr/1]).
 -vsn(1.0).
--author("Tony Wan - lintao.wan@emc.com").
+-author("Tony Wan - visual2me@gmail.com").
 -date("2012/07/30 10:19:56").
 
 ether_type(Type) ->
